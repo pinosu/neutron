@@ -653,8 +653,8 @@ github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161 h1:L/gRVlceqvL25
 github.com/Azure/go-ansiterm v0.0.0-20230124172434-306776ec8161/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/CosmWasm/wasmvm/v3 v3.0.5 h1:fQf9S2t5dphROTtXcHa1omS9vK/9F9nX5g/gc5OHJ9w=
-github.com/CosmWasm/wasmvm/v3 v3.0.5/go.mod h1:oknpb1bFERvvKcY7vHRp1F/Y/z66xVrsl7n9uWkOAlM=
+github.com/CosmWasm/wasmvm/v3 v3.0.7 h1:jNndgpVJ1EFAY61oy6GhmZCSCWbd+rp1LlkTftHPW+A=
+github.com/CosmWasm/wasmvm/v3 v3.0.7/go.mod h1:oknpb1bFERvvKcY7vHRp1F/Y/z66xVrsl7n9uWkOAlM=
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/DataDog/datadog-go v4.8.3+incompatible h1:fNGaYSuObuQb5nzeTQqowRAd9bpDIRRV4/gUtIBjh8Q=
 github.com/DataDog/datadog-go v4.8.3+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
@@ -1338,8 +1338,8 @@ github.com/neutron-org/cosmos-sdk v0.53.4-neutron h1:3z0d40L5laEf6y33hg7wq4lHisD
 github.com/neutron-org/cosmos-sdk v0.53.4-neutron/go.mod h1:BfzD9aPWrgLTApLzpm0vsNOSLu4J4SNSW+GFzPO4jxg=
 github.com/neutron-org/feemarket v1.2.0 h1:8WlDaslu9RiXzNvrNZgkm0UISeVd+pAw+KDxNTP2MN8=
 github.com/neutron-org/feemarket v1.2.0/go.mod h1:sCt2ocmA9eyif865cUfpe8BPI4pxjxIlybUukWr74AE=
-github.com/neutron-org/wasmd v0.61.12-neutron h1:jJWQINUgbTRO7zPbhX+dtZV8xqYO8PvhNyc82UYV2C4=
-github.com/neutron-org/wasmd v0.61.12-neutron/go.mod h1:TdN+HYrFs+PySIzLMRPmJFYbdJ6fVBE8lQGbrOEHENU=
+github.com/neutron-org/wasmd v0.61.14-neutron h1:8kSm2FmeGEGSmVgZ/QI7W+5BvzMCOzqzk1V99+fqUnE=
+github.com/neutron-org/wasmd v0.61.14-neutron/go.mod h1:T61FkmvyR7FUpI0LJ++tqUJwUynRLROgKQVIr4RLKnc=
 github.com/niemeyer/pretty v0.0.0-20200227124842-a10e7caefd8e/go.mod h1:zD1mROLANZcx1PVRCS0qkT7pwLkGfwJo4zjcN/Tysno=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/nxadm/tail v1.4.11 h1:8feyoE3OzPrcshW5/MJ4sGESc5cqmGkGCWlco4l0bqY=
