@@ -1,0 +1,6 @@
+.git
+.testchains
+poc
+data
+**/target
+**/.cache

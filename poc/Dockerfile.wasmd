@@ -1,0 +1,15 @@
+FROM golang:1.24-bullseye AS build
+ENV GOTOOLCHAIN=auto
+# wasmd commit pinned by neutron's go.mod replace directive (Callbacks+ branch)
+RUN git clone https://github.com/CosmWasm/wasmd.git /src \
+ && git -C /src checkout 52d46ad3b284964f1a507d3da8ff684d735a8e0b
+WORKDIR /src
+RUN make build
+RUN cp "$(find /go/pkg/mod -name libwasmvm.x86_64.so | head -1)" /tmp/libwasmvm.x86_64.so
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y bash jq curl ca-certificates python3 && rm -rf /var/lib/apt/lists/*
+COPY --from=build /src/build/wasmd /usr/local/bin/wasmd
+COPY --from=build /tmp/libwasmvm.x86_64.so /usr/local/lib/
+RUN ldconfig
+EXPOSE 26656 26657 1317 9090

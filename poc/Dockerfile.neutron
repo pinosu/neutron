@@ -1,0 +1,11 @@
+FROM golang:1.24-bullseye
+RUN apt-get update && apt-get install -y jq curl python3 xxd && rm -rf /var/lib/apt/lists/*
+ENV GOTOOLCHAIN=auto
+WORKDIR /opt/neutron
+COPY . .
+# genwasm.go references wasmcli genesis functions not present in the pinned wasmd replace
+# store_binary (the only caller) is never invoked in network/init-neutrond.sh, so stub is safe
+RUN printf 'package main\nimport ("github.com/cosmos/cosmos-sdk/client";"github.com/spf13/cobra")\nfunc addGenesisWasmMsgCmd(defaultNodeHome string) *cobra.Command {\n\treturn &cobra.Command{Use:"add-wasm-message",Short:"Wasm genesis subcommands",DisableFlagParsing:true,SuggestionsMinimumDistance:2,RunE:client.ValidateCmd}\n}\n' > cmd/neutrond/genwasm.go
+RUN make install
+ENV PATH="/root/go/bin:${PATH}"
+EXPOSE 26656 26657 1317
