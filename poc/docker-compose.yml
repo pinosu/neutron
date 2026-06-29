@@ -1,0 +1,44 @@
+services:
+  wasmd-chain:
+    build: { context: ., dockerfile: Dockerfile.wasmd }
+    image: cbp-wasmd:latest
+    container_name: wasmd-chain
+    volumes:
+      - ./scripts:/opt/harness:ro
+      - ./data/wasmd:/root/.wasmd
+    command: bash -c "/opt/harness/init-wasmd.sh && wasmd start --home /root/.wasmd"
+    ports: ["26657:26657", "1317:1317", "9090:9090"]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:26657/status"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  neutron-chain:
+    build: { context: .., dockerfile: poc/Dockerfile.neutron }
+    image: cbp-neutron:latest
+    container_name: neutron-chain
+    volumes:
+      - ./scripts:/opt/harness:ro
+      - ./data/neutron:/opt/neutron/data
+    command: bash -c "/opt/harness/init-neutron.sh"
+    ports: ["36657:26657", "1316:1317"]
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:26657/status"]
+      interval: 3s
+      timeout: 3s
+      retries: 60
+
+  hermes:
+    image: informalsystems/hermes:1.10.4
+    container_name: hermes
+    user: root
+    volumes:
+      - ./hermes:/home/hermes/.hermes:ro
+      - ./scripts:/opt/harness:ro
+      - ./data:/data
+      - ./data/hermes-keys:/root/.hermes/keys
+    entrypoint: ["/bin/sh", "-c", "sleep infinity"]
+    depends_on:
+      wasmd-chain: { condition: service_healthy }
+      neutron-chain: { condition: service_healthy }

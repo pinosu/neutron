@@ -152,6 +152,7 @@ import (
 	icahostkeeper "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/host/keeper"
 	icahosttypes "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/host/types"
 	icatypes "github.com/cosmos/ibc-go/v10/modules/apps/27-interchain-accounts/types"
+	ibccallbacks "github.com/cosmos/ibc-go/v10/modules/apps/callbacks"
 	ibctransfertypes "github.com/cosmos/ibc-go/v10/modules/apps/transfer/types"
 	ibc "github.com/cosmos/ibc-go/v10/modules/core"
 	ibcclienttypes "github.com/cosmos/ibc-go/v10/modules/core/02-client/types" //nolint:staticcheck
@@ -389,6 +390,15 @@ type App struct {
 	Ics20WasmHooks          *ibchooks.WasmHooks
 	RateLimitingICS4Wrapper *ibcratelimit.ICS4Wrapper
 	HooksICS4Wrapper        ibchooks.ICS4Middleware
+	// transferStackPreHooks is the recv stack below Hooks: rate-limit -> gmp ->
+	// pfm -> transfer. Hooks is layered on the Callbacks+ chain in New, so the
+	// pre-Hooks stack it wraps is held here.
+	transferStackPreHooks ibcporttypes.IBCModule
+	// WasmDedupMiddleware enforces per-side Hooks/Callbacks memo exclusivity: one
+	// instance on send (transfer keeper's ICS4Wrapper, rejects
+	// ibc_callback+src_callback) and recv (outer router module, rejects
+	// wasm+dest_callback).
+	WasmDedupMiddleware *wasm.IBCDedupMiddleware
 
 	InterchainQueriesKeeper interchainqueriesmodulekeeper.Keeper
 	InterchainTxsKeeper     interchaintxskeeper.Keeper
@@ -837,11 +847,44 @@ func New(
 	app.RateLimitingICS4Wrapper.ContractKeeper = app.ContractKeeper
 	app.Ics20WasmHooks.ContractKeeper = &app.WasmKeeper
 
+	wasmIBCHandler := wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.TransferKeeper.Keeper, app.IBCKeeper.ChannelKeeper, app.ContractKeeper)
+	// Recv stack (outer -> inner): Dedup -> Hooks -> ibc-go callbacks ->
+	// Callbacks+ rewriter -> adapter -> transfer.
+	// - adapter: gives the pre-Hooks stack PacketDataUnmarshaler, which
+	//   ibccallbacks requires on its inner module.
+	// - Callbacks+ rewriter: on dest_callback.calldata, rewrites Receiver to the
+	//   Hooks intermediate so transfer credits it before IBCReceivePacketCallback.
+	// - Hooks above callbacks so a `wasm` memo is fully handled first; Dedup
+	//   guarantees wasm and dest_callback never coexist.
+	transferRecvStack := ibcporttypes.IBCModule(packetDataUnmarshalerAdapter{
+		IBCModule:   app.transferStackPreHooks,
+		ics4Wrapper: app.IBCKeeper.ChannelKeeper,
+	})
+	transferRecvStack = wasm.NewIBCV1CallbacksPlusMiddleware(transferRecvStack)
+	// callbacks middleware: recv module here and, via Dedup.SetICS4Wrapper below,
+	// the keeper's send wrapper. Its ICS4Wrapper is the rate-limit chain so send
+	// continues rate-limit -> hooks -> channel.
+	callbacksMiddleware := ibccallbacks.NewIBCMiddleware(transferRecvStack, app.RateLimitingICS4Wrapper, wasmIBCHandler, wasm.DefaultMaxIBCCallbackGas)
+	transferRecvStack = callbacksMiddleware
+	// Hooks wraps the callbacks chain so it runs above ibc-go callbacks on
+	// recv/ack. Same instance the ibc-hooks tests reach via app.TransferStack.
+	hooksMiddleware := ibchooks.NewIBCMiddleware(transferRecvStack, &app.HooksICS4Wrapper)
+	app.TransferStack = &hooksMiddleware
+	transferRecvStack = app.TransferStack
+	// Dedup (also the keeper's send wrapper): set its recv inner module so one
+	// instance guards both directions.
+	app.WasmDedupMiddleware.SetUnderlyingApplication(transferRecvStack)
+	transferRecvStack = app.WasmDedupMiddleware
+	// Route Dedup's send through the callbacks middleware so IBCSendPacketCallback
+	// fires on send (ADR-008 sender auth + src_callback.calldata rejection):
+	// transferKeeper -> Dedup -> ibc-go callbacks -> rate-limit -> hooks -> channel.
+	app.WasmDedupMiddleware.SetICS4Wrapper(callbacksMiddleware)
+
 	ibcRouter.AddRoute(icacontrollertypes.SubModuleName, icaControllerStack).
 		AddRoute(icahosttypes.SubModuleName, icaHostIBCModule).
-		AddRoute(ibctransfertypes.ModuleName, app.TransferStack).
+		AddRoute(ibctransfertypes.ModuleName, transferRecvStack).
 		AddRoute(interchaintxstypes.ModuleName, icaControllerStack).
-		AddRoute(wasmtypes.ModuleName, wasm.NewIBCHandler(app.WasmKeeper, app.IBCKeeper.ChannelKeeper, app.TransferKeeper.Keeper, app.IBCKeeper.ChannelKeeper))
+		AddRoute(wasmtypes.ModuleName, wasmIBCHandler)
 	app.IBCKeeper.SetRouter(ibcRouter)
 
 	clientKeeper := app.IBCKeeper.ClientKeeper
@@ -1640,12 +1683,19 @@ func (app *App) WireICS20PreWasmKeeper(
 	)
 	app.RateLimitingICS4Wrapper = &rateLimitingICS4Wrapper
 
+	// Callbacks+ Dedup: created here because it must be the transfer keeper's
+	// ICS4Wrapper, so on send it rejects ibc_callback+src_callback collisions. Its
+	// recv inner module and its inner send wrapper (the callbacks middleware, for
+	// IBCSendPacketCallback) are set in New; RateLimitingICS4Wrapper is the
+	// placeholder until then.
+	app.WasmDedupMiddleware = wasm.NewIBCDedupMiddleware(nil, app.RateLimitingICS4Wrapper)
+
 	// Create Transfer Keepers
 	app.TransferKeeper = wrapkeeper.NewKeeper(
 		appCodec,
 		runtime.NewKVStoreService(app.keys[ibctransfertypes.StoreKey]),
 		app.GetSubspace(ibctransfertypes.ModuleName),
-		app.RateLimitingICS4Wrapper,
+		app.WasmDedupMiddleware,
 		app.IBCKeeper.ChannelKeeper,
 		app.MsgServiceRouter(),
 		app.AccountKeeper,
@@ -1674,8 +1724,9 @@ func (app *App) WireICS20PreWasmKeeper(
 	ibcStack = gmpmiddleware.NewIBCMiddleware(ibcStack)
 	// RateLimiting IBC Middleware
 	rateLimitingTransferModule := ibcratelimit.NewIBCModule(ibcStack, app.RateLimitingICS4Wrapper)
+	app.transferStackPreHooks = &rateLimitingTransferModule
 
-	// Hooks Middleware
-	hooksTransferModule := ibchooks.NewIBCMiddleware(&rateLimitingTransferModule, &app.HooksICS4Wrapper)
-	app.TransferStack = &hooksTransferModule
+	// Hooks (app.TransferStack) is not created here: in the Callbacks+ recv stack
+	// it must sit above ibc-go callbacks, so it's layered on the callbacks chain
+	// in New. The pre-Hooks stack it wraps is stored in transferStackPreHooks.
 }
